@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-co-op/gocron/v2"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 )
 
 const httpPort = ":3000"
@@ -18,8 +22,52 @@ func main() {
 			log.Println(err)
 		}
 	})
-	err := http.ListenAndServe(httpPort, r)
+
+	s, err := gocron.NewScheduler()
 	if err != nil {
 		panic(err)
 	}
+
+	jobs, err := initJobs(s)
+	if err != nil {
+		panic(err)
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		err := http.ListenAndServe(httpPort, r)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		fmt.Printf("starting job: %v\n", jobs[0].ID())
+		s.Start()
+	}()
+
+	wg.Wait()
+}
+
+func initJobs(s gocron.Scheduler) ([]gocron.Job, error) {
+	j, err := s.NewJob(
+		gocron.DurationJob(
+			10*time.Second,
+		),
+		gocron.NewTask(
+			func() {
+				fmt.Println("Cron started")
+			},
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(j.ID())
+
+	return []gocron.Job{j}, err
 }
